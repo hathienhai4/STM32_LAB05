@@ -68,21 +68,20 @@ static void MX_TIM2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-int ADC_value = 0;
-int status = 0;
-
-char str[100];
-
 uint8_t temp = 0;
 uint8_t buffer[MAX_BUFFER_SIZE];
 uint8_t index_buffer = 0;
 uint8_t buffer_flag = 0;
+uint32_t ADC_value = 0;
+
+int status = 0;
+char str[50];
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 	if(huart->Instance == USART2){
 		HAL_UART_Transmit(&huart2, &temp, 1, 50);
 		buffer[index_buffer++] = temp;
-		if(index_buffer == MAX_BUFFER_SIZE) index_buffer = 0;
+		if(index_buffer >= MAX_BUFFER_SIZE) index_buffer = 0;
 
 		buffer_flag = 1;
 		HAL_UART_Receive_IT(&huart2, &temp, 1);
@@ -91,15 +90,15 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 
 void command_parser_fsm()
 {
-	if (strstr((char*)buffer, "!RST#") != NULL) {
+	if (strstr((char*)buffer, "!RST#")) {
 		status = RST;
 		ADC_value = HAL_ADC_GetValue(&hadc1);
-		HAL_UART_Transmit(&huart2, (void *)str, sprintf(str, "!ADC=%d#\r\n", ADC_value), 500);
+		HAL_UART_Transmit(&huart2, (void *)str, sprintf(str, "!ADC=%lu#\r\n", ADC_value), 500);
 		setTimer(0, 3000);
 		memset(buffer, 0, sizeof(buffer));
 		index_buffer = 0;
 	}
-	if (strstr((char*)buffer, "!OK#") != NULL) {
+	else if (strstr((char*)buffer, "!OK#")) {
 		status = OK;
 		memset(buffer, 0, sizeof(buffer));
 		index_buffer = 0;
@@ -111,8 +110,7 @@ void uart_communication_fsm()
 	switch (status) {
 	case RST:
 		if (isTimerExpired(0)) {
-			ADC_value = HAL_ADC_GetValue(&hadc1);
-			HAL_UART_Transmit(&huart2, (void *)str, sprintf(str, "!ADC=%d#\r\n",ADC_value), 500);
+			HAL_UART_Transmit(&huart2, (void *)str, sprintf(str, "!ADC=%lu#\r\n",ADC_value), 500);
 			setTimer(0, 3000);
 		}
 		break;
@@ -164,6 +162,8 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
+  char welcome[] = "HELLO UART COMMUNICATION\r\n";
+  HAL_UART_Transmit(&huart2, (void *)welcome, strlen(welcome), 500);
   while (1)
   {
 	  if(buffer_flag == 1){
