@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include <software_timer.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -33,6 +34,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define MAX_BUFFER_SIZE 30
+
+#define RST 	10
+#define OK 		12
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -63,7 +68,11 @@ static void MX_TIM2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-#define MAX_BUFFER_SIZE  30
+int ADC_value = 0;
+int status = 0;
+
+char str[100];
+
 uint8_t temp = 0;
 uint8_t buffer[MAX_BUFFER_SIZE];
 uint8_t index_buffer = 0;
@@ -71,15 +80,48 @@ uint8_t buffer_flag = 0;
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 	if(huart->Instance == USART2){
-
-		//HAL_UART_Transmit(&huart2, &temp, 1, 50);
+		HAL_UART_Transmit(&huart2, &temp, 1, 50);
 		buffer[index_buffer++] = temp;
-		if(index_buffer == 30) index_buffer = 0;
+		if(index_buffer == MAX_BUFFER_SIZE) index_buffer = 0;
 
 		buffer_flag = 1;
 		HAL_UART_Receive_IT(&huart2, &temp, 1);
 	}
 }
+
+void command_parser_fsm()
+{
+	if (strstr((char*)buffer, "!RST#") != NULL) {
+		status = RST;
+		ADC_value = HAL_ADC_GetValue(&hadc1);
+		HAL_UART_Transmit(&huart2, (void *)str, sprintf(str, "!ADC=%d#\r\n", ADC_value), 500);
+		setTimer(0, 3000);
+		memset(buffer, 0, sizeof(buffer));
+		index_buffer = 0;
+	}
+	if (strstr((char*)buffer, "!OK#") != NULL) {
+		status = OK;
+		memset(buffer, 0, sizeof(buffer));
+		index_buffer = 0;
+	}
+}
+
+void uart_communication_fsm()
+{
+	switch (status) {
+	case RST:
+		if (isTimerExpired(0)) {
+			ADC_value = HAL_ADC_GetValue(&hadc1);
+			HAL_UART_Transmit(&huart2, (void *)str, sprintf(str, "!ADC=%d#\r\n",ADC_value), 500);
+			setTimer(0, 3000);
+		}
+		break;
+	case OK:
+		ADC_value = -1;
+		break;
+	}
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -116,6 +158,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim2);
   HAL_UART_Receive_IT(&huart2, &temp, 1);
+  HAL_ADC_Start(&hadc1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -124,10 +167,10 @@ int main(void)
   while (1)
   {
 	  if(buffer_flag == 1){
-//		  command_parser_fsm();
+		  command_parser_fsm();
 		  buffer_flag = 0;
 	  }
-//	  uart_communiation_fsm();
+	  uart_communication_fsm();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
